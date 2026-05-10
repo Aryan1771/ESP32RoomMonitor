@@ -2,33 +2,48 @@ package com.example.roommonitor.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeviceThermostat
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material.icons.outlined.Router
+import androidx.compose.material.icons.outlined.Wifi
+import androidx.compose.material.icons.outlined.WifiFind
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -36,6 +51,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.roommonitor.data.RoomStatusDto
@@ -45,39 +61,281 @@ import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RoomStatusScreen(viewModel: RoomStatusViewModel) {
+fun RoomStatusScreen(
+    viewModel: RoomStatusViewModel,
+    provisioningViewModel: ProvisioningViewModel
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val provisioningState by provisioningViewModel.uiState.collectAsStateWithLifecycle()
     val status = uiState.status
+    var showProvisioningScreen by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("ESP32 Room Monitor")
+                    Text(if (showProvisioningScreen) "Set Up ESP32 Wi-Fi" else "ESP32 Room Monitor")
+                },
+                navigationIcon = {
+                    if (showProvisioningScreen) {
+                        IconButton(onClick = { showProvisioningScreen = false }) {
+                            Icon(
+                                imageVector = Icons.Outlined.ArrowBack,
+                                contentDescription = "Back to dashboard"
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    if (!showProvisioningScreen) {
+                        TextButton(onClick = { showProvisioningScreen = true }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Router,
+                                contentDescription = null
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Device Setup")
+                        }
+                    }
                 }
             )
         }
     ) { innerPadding ->
-        PullToRefreshBox(
-            isRefreshing = uiState.isRefreshing,
-            onRefresh = { viewModel.refresh() },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            when {
-                uiState.isLoading -> LoadingState()
-                uiState.errorMessage != null && status == null -> ErrorState(uiState.errorMessage)
-                status?.statusAvailable == false -> EmptyState(
-                    message = status.message ?: "No sensor data yet",
-                    lastUpdated = status.serverReceivedAt
-                )
-                status != null -> ContentState(
-                    status = status,
-                    lightHistory = uiState.lightHistory,
-                    errorMessage = uiState.errorMessage
+        if (showProvisioningScreen) {
+            ProvisioningScreen(
+                uiState = provisioningState,
+                onCheckDevice = provisioningViewModel::refreshProvisioningStatus,
+                onScanNetworks = provisioningViewModel::scanNetworks,
+                onSsidChange = provisioningViewModel::updateSsid,
+                onPasswordChange = provisioningViewModel::updatePassword,
+                onNetworkSelected = provisioningViewModel::chooseNetwork,
+                onSubmit = provisioningViewModel::submitCredentials,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            )
+        } else {
+            PullToRefreshBox(
+                isRefreshing = uiState.isRefreshing,
+                onRefresh = { viewModel.refresh() },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                when {
+                    uiState.isLoading -> LoadingState()
+                    uiState.errorMessage != null && status == null -> ErrorState(uiState.errorMessage)
+                    status?.statusAvailable == false -> EmptyState(
+                        message = status.message ?: "No sensor data yet",
+                        lastUpdated = status.serverReceivedAt
+                    )
+                    status != null -> ContentState(
+                        status = status,
+                        lightHistory = uiState.lightHistory,
+                        errorMessage = uiState.errorMessage
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProvisioningScreen(
+    uiState: ProvisioningUiState,
+    onCheckDevice: () -> Unit,
+    onScanNetworks: () -> Unit,
+    onSsidChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onNetworkSelected: (String) -> Unit,
+    onSubmit: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            InfoCard(
+                title = "Provisioning Flow",
+                body = "1. Power on the ESP32.\n2. Connect your phone to the Wi-Fi hotspot named ESP32-RoomMonitor-Setup.\n3. Return here and scan nearby Wi-Fi.\n4. Send your home SSID and password to the ESP32."
+            )
+        }
+
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                FilledTonalButton(
+                    onClick = onCheckDevice,
+                    enabled = !uiState.isCheckingDevice && !uiState.isSubmitting
+                ) {
+                    if (uiState.isCheckingDevice) {
+                        CircularProgressIndicator(modifier = Modifier.width(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.Wifi,
+                            contentDescription = null
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Check ESP32")
+                }
+
+                FilledTonalButton(
+                    onClick = onScanNetworks,
+                    enabled = !uiState.isScanningNetworks && !uiState.isSubmitting
+                ) {
+                    if (uiState.isScanningNetworks) {
+                        CircularProgressIndicator(modifier = Modifier.width(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.WifiFind,
+                            contentDescription = null
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Scan Nearby Wi-Fi")
+                }
+            }
+        }
+
+        uiState.deviceStatus?.let { status ->
+            item {
+                InfoCard(
+                    title = "ESP32 Setup Hotspot",
+                    body = buildString {
+                        append("Device ID: ")
+                        append(status.deviceId ?: "Unknown")
+                        append("\nHotspot: ")
+                        append(status.apSsid ?: "ESP32-RoomMonitor-Setup")
+                        append("\nLocal address: ")
+                        append(status.provisioningUrl ?: "http://192.168.4.1/")
+                    }
                 )
             }
+        }
+
+        uiState.infoMessage?.takeIf { it.isNotBlank() }?.let { message ->
+            item {
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+
+        uiState.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
+            item {
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+
+        item {
+            OutlinedTextField(
+                value = uiState.ssidInput,
+                onValueChange = onSsidChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Wi-Fi SSID") },
+                singleLine = true
+            )
+        }
+
+        item {
+            OutlinedTextField(
+                value = uiState.passwordInput,
+                onValueChange = onPasswordChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Wi-Fi Password") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation()
+            )
+        }
+
+        if (uiState.availableNetworks.isNotEmpty()) {
+            item {
+                Text(
+                    text = "Nearby networks from ESP32 scan",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            items(uiState.availableNetworks.size) { index ->
+                val ssid = uiState.availableNetworks[index]
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNetworkSelected(ssid) },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Wifi,
+                            contentDescription = null
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = ssid,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Button(
+                onClick = onSubmit,
+                enabled = !uiState.isSubmitting,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (uiState.isSubmitting) {
+                    CircularProgressIndicator(modifier = Modifier.width(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Send Credentials To ESP32")
+                }
+            }
+        }
+
+        item {
+            Text(
+                text = "After the ESP32 accepts the credentials, it will restart and try to join your home Wi-Fi. Reconnect your phone to the internet, then return to the dashboard and refresh.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoCard(title: String, body: String) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

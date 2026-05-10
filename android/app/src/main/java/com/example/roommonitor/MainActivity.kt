@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.roommonitor.ui.ProvisioningViewModel
 import com.example.roommonitor.ui.RoomStatusScreen
 import com.example.roommonitor.ui.RoomStatusViewModel
 import com.example.roommonitor.ui.theme.RoomMonitorTheme
@@ -18,7 +19,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             RoomMonitorTheme {
                 val viewModel: RoomStatusViewModel = viewModel()
-                RoomStatusScreen(viewModel = viewModel)
+                val provisioningViewModel: ProvisioningViewModel = viewModel()
+                RoomStatusScreen(
+                    viewModel = viewModel,
+                    provisioningViewModel = provisioningViewModel
+                )
             }
         }
     }

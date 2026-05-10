@@ -8,6 +8,7 @@ This MVP works today with:
 - LDR-based light sensing
 - Render-hosted Node.js backend
 - Jetpack Compose Android app
+- In-app Wi-Fi provisioning for the ESP32 through its setup hotspot
 
 Ambient temperature and humidity support through a DHT11 is already scaffolded in the ESP32 code, but intentionally commented out until you have the sensor.
 
@@ -56,6 +57,7 @@ ESP32RoomMonitor/
 4. Flash the ESP32 sketch from `esp32/room_monitor/room_monitor.ino`.
 5. Add your backend URL and API key to `android/local.properties`.
 6. Run the Android app and pull to refresh.
+7. If the ESP32 has no Wi-Fi credentials yet, open `Device Setup` in the app and provision the home network.
 
 ## Step-by-Step Implementation
 
@@ -72,7 +74,7 @@ ESP32RoomMonitor/
 
 ### 2. ESP32 Firmware
 
-1. Copy `esp32/arduino_secrets.example.h` into `esp32/room_monitor/arduino_secrets.h`.
+1. Copy `esp32/room_monitor/arduino_secrets.example.h` into `esp32/room_monitor/arduino_secrets.h`.
 2. Fill in:
    - Wi-Fi SSID
    - Wi-Fi password
@@ -86,6 +88,7 @@ ESP32RoomMonitor/
    - light reading
    - successful POST
 6. The ESP32 then sleeps for 30 seconds between uploads.
+7. If Wi-Fi credentials are missing or invalid, the ESP32 starts a hotspot named `ESP32-RoomMonitor-Setup` and waits for the Android app to provision Wi-Fi.
 
 ### 3. Android App
 
@@ -104,6 +107,7 @@ roomMonitor.apiKey=your-shared-secret
    - light card with graph
    - device status card
    - last updated timestamp
+6. If you need first-time Wi-Fi setup, tap `Device Setup`, connect the phone to the ESP32 hotspot, scan nearby networks, and send the Wi-Fi password from inside the app.
 
 ### 4. Later DHT11 Upgrade
 

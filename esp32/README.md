@@ -4,15 +4,18 @@ This sketch is designed for a DOIT ESP32 board and works immediately with:
 
 - an LDR
 - the ESP32 internal chip temperature
+- a local provisioning hotspot for first-time Wi-Fi setup
 
 DHT11 support is scaffolded but commented out until you buy the sensor.
 
 ## Files
 
 - `room_monitor/room_monitor.ino`
-- `arduino_secrets.example.h`
+- `room_monitor/arduino_secrets.example.h`
 
 Create a real `room_monitor/arduino_secrets.h` file from the example before uploading.
+
+The Android app can provision Wi-Fi credentials later, so `SECRET_SSID` and `SECRET_PASS` may be left empty if you prefer setup through the app.
 
 ## Arduino Libraries
 
@@ -50,6 +53,18 @@ Create `room_monitor/arduino_secrets.h`:
 #define SECRET_API_URL "https://your-render-service.onrender.com"
 #define SECRET_API_KEY "your-shared-secret"
 ```
+
+## App-Based Wi-Fi Setup
+
+If the ESP32 cannot connect to Wi-Fi, it starts a hotspot named `ESP32-RoomMonitor-Setup`.
+
+Then you can:
+
+1. Connect your phone to that hotspot
+2. Open the Android app
+3. Tap `Device Setup`
+4. Scan nearby Wi-Fi names from inside the app
+5. Send the chosen SSID and password to the ESP32
 
 ## Power Notes
 

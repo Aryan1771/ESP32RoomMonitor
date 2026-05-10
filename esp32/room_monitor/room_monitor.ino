@@ -1,6 +1,8 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
+#include <WebServer.h>
 #include <time.h>
 #include "arduino_secrets.h"
 
@@ -19,9 +21,18 @@ constexpr unsigned long WIFI_TIMEOUT_MS = 20000;
 constexpr long GMT_OFFSET_SECONDS = 0;
 constexpr int DAYLIGHT_OFFSET_SECONDS = 0;
 constexpr bool DEBUG_CONTINUOUS_MODE = false;
+constexpr char PREFERENCES_NAMESPACE[] = "wifi-config";
+constexpr char PREFERENCES_SSID_KEY[] = "ssid";
+constexpr char PREFERENCES_PASS_KEY[] = "pass";
+constexpr char SETUP_AP_SSID[] = "ESP32-RoomMonitor-Setup";
+constexpr char SETUP_AP_PASSWORD[] = "";
+constexpr IPAddress LOCAL_AP_IP(192, 168, 4, 1);
 }
 
+Preferences wifiPreferences;
+WebServer provisioningServer(80);
 unsigned long lastUploadAtMs = 0;
+bool shouldRestartAfterProvisioning = false;
 
 float readChipTemperatureC() {
   return temperatureRead();
@@ -36,17 +47,49 @@ int convertLightToPercent(int rawValue) {
   return constrain(percent, 0, 100);
 }
 
-bool connectToWifi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(SECRET_SSID, SECRET_PASS);
+void sendJsonResponse(int statusCode, const JsonDocument& doc) {
+  String response;
+  serializeJson(doc, response);
+  provisioningServer.sendHeader("Access-Control-Allow-Origin", "*");
+  provisioningServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  provisioningServer.send(statusCode, "application/json", response);
+}
 
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_TIMEOUT_MS) {
-    delay(500);
-    Serial.print(".");
+String normalizeSsid(const String& value) {
+  String trimmed = value;
+  trimmed.trim();
+  return trimmed;
+}
+
+bool loadStoredCredentials(String& ssid, String& password) {
+  wifiPreferences.begin(PREFERENCES_NAMESPACE, true);
+  ssid = wifiPreferences.getString(PREFERENCES_SSID_KEY, "");
+  password = wifiPreferences.getString(PREFERENCES_PASS_KEY, "");
+  wifiPreferences.end();
+
+  ssid = normalizeSsid(ssid);
+  return !ssid.isEmpty();
+}
+
+bool loadFallbackCredentials(String& ssid, String& password) {
+  ssid = normalizeSsid(String(SECRET_SSID));
+  password = String(SECRET_PASS);
+  return !ssid.isEmpty();
+}
+
+bool resolveWifiCredentials(String& ssid, String& password) {
+  if (loadStoredCredentials(ssid, password)) {
+    return true;
   }
 
-  return WiFi.status() == WL_CONNECTED;
+  return loadFallbackCredentials(ssid, password);
+}
+
+void saveProvisionedCredentials(const String& ssid, const String& password) {
+  wifiPreferences.begin(PREFERENCES_NAMESPACE, false);
+  wifiPreferences.putString(PREFERENCES_SSID_KEY, normalizeSsid(ssid));
+  wifiPreferences.putString(PREFERENCES_PASS_KEY, password);
+  wifiPreferences.end();
 }
 
 String getIsoTimestamp() {
@@ -58,6 +101,28 @@ String getIsoTimestamp() {
   char timestampBuffer[25];
   strftime(timestampBuffer, sizeof(timestampBuffer), "%Y-%m-%dT%H:%M:%SZ", &timeInfo);
   return String(timestampBuffer);
+}
+
+bool connectToWifi() {
+  String ssid;
+  String password;
+
+  if (!resolveWifiCredentials(ssid, password)) {
+    Serial.println("No Wi-Fi credentials saved yet.");
+    return false;
+  }
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  Serial.printf("Connecting to Wi-Fi SSID: %s\n", ssid.c_str());
+
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_TIMEOUT_MS) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  return WiFi.status() == WL_CONNECTED;
 }
 
 bool postReading(float chipTemperatureC, int lightRaw, int lightPercent) {
@@ -100,7 +165,7 @@ bool postReading(float chipTemperatureC, int lightRaw, int lightPercent) {
   return responseCode > 0 && responseCode < 300;
 }
 
-void uploadReadingCycle() {
+bool uploadReadingCycle() {
   float chipTemperatureC = readChipTemperatureC();
   int lightRaw = readLightRaw();
   int lightPercent = convertLightToPercent(lightRaw);
@@ -108,17 +173,158 @@ void uploadReadingCycle() {
   Serial.printf("Chip temperature: %.2f C\n", chipTemperatureC);
   Serial.printf("Light raw: %d, light percent: %d%%\n", lightRaw, lightPercent);
 
-  if (connectToWifi()) {
-    Serial.println("Wi-Fi connected.");
-    configTime(GMT_OFFSET_SECONDS, DAYLIGHT_OFFSET_SECONDS, "pool.ntp.org", "time.nist.gov");
-    bool sent = postReading(chipTemperatureC, lightRaw, lightPercent);
-    Serial.println(sent ? "Reading uploaded successfully." : "Upload failed.");
-  } else {
-    Serial.println("Wi-Fi connection failed.");
+  if (!connectToWifi()) {
+    Serial.println("Wi-Fi connection failed or credentials are missing.");
+    WiFi.disconnect(true, true);
+    WiFi.mode(WIFI_OFF);
+    return false;
   }
 
-  WiFi.disconnect(true);
+  Serial.println("Wi-Fi connected.");
+  configTime(GMT_OFFSET_SECONDS, DAYLIGHT_OFFSET_SECONDS, "pool.ntp.org", "time.nist.gov");
+  bool sent = postReading(chipTemperatureC, lightRaw, lightPercent);
+  Serial.println(sent ? "Reading uploaded successfully." : "Upload failed.");
+
+  WiFi.disconnect(true, true);
   WiFi.mode(WIFI_OFF);
+  return true;
+}
+
+void handleProvisioningStatus() {
+  JsonDocument doc;
+  doc["ok"] = true;
+  doc["mode"] = "provisioning";
+  doc["deviceId"] = DEVICE_ID;
+  doc["apSsid"] = SETUP_AP_SSID;
+  doc["apPasswordRequired"] = String(SETUP_AP_PASSWORD).length() >= 8;
+  doc["provisioningUrl"] = "http://192.168.4.1/";
+  sendJsonResponse(200, doc);
+}
+
+void handleProvisioningScan() {
+  JsonDocument doc;
+  JsonArray networks = doc["networks"].to<JsonArray>();
+
+  int networkCount = WiFi.scanNetworks();
+  if (networkCount < 0) {
+    doc["ok"] = false;
+    doc["message"] = "Wi-Fi scan failed";
+    sendJsonResponse(500, doc);
+    return;
+  }
+
+  doc["ok"] = true;
+  for (int index = 0; index < networkCount; ++index) {
+    String ssid = normalizeSsid(WiFi.SSID(index));
+    if (ssid.isEmpty()) {
+      continue;
+    }
+
+    bool alreadyAdded = false;
+    for (JsonVariant existing : networks) {
+      if (existing.as<String>() == ssid) {
+        alreadyAdded = true;
+        break;
+      }
+    }
+
+    if (!alreadyAdded) {
+      networks.add(ssid);
+    }
+  }
+
+  WiFi.scanDelete();
+  sendJsonResponse(200, doc);
+}
+
+void handleProvisioningConfigure() {
+  if (!provisioningServer.hasArg("plain")) {
+    JsonDocument doc;
+    doc["ok"] = false;
+    doc["message"] = "Missing JSON body";
+    sendJsonResponse(400, doc);
+    return;
+  }
+
+  JsonDocument requestDoc;
+  DeserializationError error = deserializeJson(requestDoc, provisioningServer.arg("plain"));
+  if (error) {
+    JsonDocument doc;
+    doc["ok"] = false;
+    doc["message"] = "Invalid JSON body";
+    sendJsonResponse(400, doc);
+    return;
+  }
+
+  String ssid = normalizeSsid(requestDoc["ssid"] | "");
+  String password = String(requestDoc["password"] | "");
+
+  if (ssid.isEmpty()) {
+    JsonDocument doc;
+    doc["ok"] = false;
+    doc["message"] = "SSID is required";
+    sendJsonResponse(400, doc);
+    return;
+  }
+
+  saveProvisionedCredentials(ssid, password);
+
+  JsonDocument doc;
+  doc["ok"] = true;
+  doc["message"] = "Credentials saved. Restarting ESP32.";
+  sendJsonResponse(200, doc);
+
+  shouldRestartAfterProvisioning = true;
+}
+
+void handleProvisioningOptions() {
+  provisioningServer.sendHeader("Access-Control-Allow-Origin", "*");
+  provisioningServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  provisioningServer.sendHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  provisioningServer.send(204);
+}
+
+void setupProvisioningServer() {
+  provisioningServer.on("/status", HTTP_GET, handleProvisioningStatus);
+  provisioningServer.on("/scan", HTTP_GET, handleProvisioningScan);
+  provisioningServer.on("/configure", HTTP_POST, handleProvisioningConfigure);
+  provisioningServer.on("/status", HTTP_OPTIONS, handleProvisioningOptions);
+  provisioningServer.on("/scan", HTTP_OPTIONS, handleProvisioningOptions);
+  provisioningServer.on("/configure", HTTP_OPTIONS, handleProvisioningOptions);
+  provisioningServer.begin();
+}
+
+void startProvisioningMode() {
+  Serial.println("Starting provisioning hotspot mode.");
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_AP_STA);
+
+  bool apStarted = String(SETUP_AP_PASSWORD).length() >= 8
+                       ? WiFi.softAP(SETUP_AP_SSID, SETUP_AP_PASSWORD)
+                       : WiFi.softAP(SETUP_AP_SSID);
+
+  if (!apStarted) {
+    Serial.println("Failed to start provisioning hotspot.");
+    return;
+  }
+
+  Serial.printf("Connect your phone to the Wi-Fi network: %s\n", SETUP_AP_SSID);
+  Serial.println("Then open the Android app setup screen and use Scan Nearby Wi-Fi.");
+  Serial.print("Provisioning server IP: ");
+  Serial.println(WiFi.softAPIP());
+
+  setupProvisioningServer();
+
+  while (true) {
+    provisioningServer.handleClient();
+
+    if (shouldRestartAfterProvisioning) {
+      delay(1000);
+      ESP.restart();
+    }
+
+    delay(10);
+  }
 }
 
 void goToDeepSleep() {
@@ -144,12 +350,16 @@ void setup() {
                      ? "Debug continuous mode enabled. Device will stay awake and post on an interval."
                      : "Deep sleep mode enabled. setup() runs again after every wake-up.");
 
-  uploadReadingCycle();
-  lastUploadAtMs = millis();
+  if (uploadReadingCycle()) {
+    lastUploadAtMs = millis();
 
-  if (!DEBUG_CONTINUOUS_MODE) {
-    goToDeepSleep();
+    if (!DEBUG_CONTINUOUS_MODE) {
+      goToDeepSleep();
+    }
+    return;
   }
+
+  startProvisioningMode();
 }
 
 void loop() {
@@ -158,8 +368,9 @@ void loop() {
   }
 
   if (millis() - lastUploadAtMs >= UPLOAD_INTERVAL_MS) {
-    uploadReadingCycle();
-    lastUploadAtMs = millis();
+    if (uploadReadingCycle()) {
+      lastUploadAtMs = millis();
+    }
   }
 
   delay(250);
