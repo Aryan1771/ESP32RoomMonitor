@@ -20,13 +20,13 @@ constexpr char DEVICE_ID[] = "esp32-room-01";
 constexpr unsigned long WIFI_TIMEOUT_MS = 20000;
 constexpr long GMT_OFFSET_SECONDS = 0;
 constexpr int DAYLIGHT_OFFSET_SECONDS = 0;
-constexpr bool DEBUG_CONTINUOUS_MODE = false;
+constexpr bool DEBUG_CONTINUOUS_MODE = true;
 constexpr char PREFERENCES_NAMESPACE[] = "wifi-config";
 constexpr char PREFERENCES_SSID_KEY[] = "ssid";
 constexpr char PREFERENCES_PASS_KEY[] = "pass";
 constexpr char SETUP_AP_SSID[] = "ESP32-RoomMonitor-Setup";
 constexpr char SETUP_AP_PASSWORD[] = "";
-constexpr IPAddress LOCAL_AP_IP(192, 168, 4, 1);
+const IPAddress LOCAL_AP_IP(192, 168, 4, 1);
 }
 
 Preferences wifiPreferences;
