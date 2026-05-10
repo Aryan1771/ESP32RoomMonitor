@@ -1,15 +1,15 @@
 # Node / backend
 backend/node_modules/
 backend/.env
-
 # Arduino / ESP32
 esp32/arduino_secrets.h
-
+esp32/room_monitor/arduino_secrets.h
 # Android / Gradle
 android/.gradle/
+android/.idea/
+android/.kotlin/
 android/local.properties
 android/**/build/
-
 # IDE / OS
 .idea/
 .vscode/

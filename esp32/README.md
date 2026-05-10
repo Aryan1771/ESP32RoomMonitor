@@ -9,10 +9,10 @@ DHT11 support is scaffolded but commented out until you buy the sensor.
 
 ## Files
 
-- `room_monitor.ino`
+- `room_monitor/room_monitor.ino`
 - `arduino_secrets.example.h`
 
-Create a real `arduino_secrets.h` file from the example before uploading.
+Create a real `room_monitor/arduino_secrets.h` file from the example before uploading.
 
 ## Arduino Libraries
 
@@ -38,11 +38,11 @@ When you buy a DHT11 later, use:
 | --- | --- | --- |
 | DHT11 data | GPIO 4 | Update if you choose another pin |
 
-Then uncomment the clearly marked DHT block in `room_monitor.ino`.
+Then uncomment the clearly marked DHT block in `room_monitor/room_monitor.ino`.
 
 ## Secret File
 
-Create `arduino_secrets.h`:
+Create `room_monitor/arduino_secrets.h`:
 
 ```cpp
 #define SECRET_SSID "your-wifi"
@@ -53,6 +53,6 @@ Create `arduino_secrets.h`:
 
 ## Power Notes
 
-The device sends one reading every 10 minutes and then enters deep sleep using `esp_sleep_enable_timer_wakeup`.
+The device sends one reading every 30 seconds and then enters deep sleep using `esp_sleep_enable_timer_wakeup`.
 
 If your power bank shuts off during sleep because current draw is too low, add a USB keep-alive module or a simple pulsed load circuit.

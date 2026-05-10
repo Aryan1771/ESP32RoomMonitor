@@ -9,7 +9,7 @@ data class RoomStatusDto(
     val temperatureC: Double? = null,
     val humidity: Double? = null,
     val deviceId: String? = null,
-    val sleepIntervalMinutes: Int? = null,
+    val sleepIntervalMinutes: Double? = null,
     val deviceSentAt: String? = null,
     val serverReceivedAt: String? = null,
     val dhtEnabled: Boolean = false

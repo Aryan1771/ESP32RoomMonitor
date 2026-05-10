@@ -12,12 +12,16 @@
 
 namespace {
 constexpr int LDR_PIN = 34;
-constexpr unsigned long SLEEP_INTERVAL_MINUTES = 10;
+constexpr unsigned long SLEEP_INTERVAL_SECONDS = 30;
+constexpr unsigned long UPLOAD_INTERVAL_MS = SLEEP_INTERVAL_SECONDS * 1000UL;
 constexpr char DEVICE_ID[] = "esp32-room-01";
 constexpr unsigned long WIFI_TIMEOUT_MS = 20000;
 constexpr long GMT_OFFSET_SECONDS = 0;
 constexpr int DAYLIGHT_OFFSET_SECONDS = 0;
+constexpr bool DEBUG_CONTINUOUS_MODE = false;
 }
+
+unsigned long lastUploadAtMs = 0;
 
 float readChipTemperatureC() {
   return temperatureRead();
@@ -48,7 +52,7 @@ bool connectToWifi() {
 String getIsoTimestamp() {
   struct tm timeInfo;
   if (!getLocalTime(&timeInfo, 5000)) {
-    return "1970-01-01T00:00:00Z";
+    return "2000-01-01T00:00:00Z";
   }
 
   char timestampBuffer[25];
@@ -69,7 +73,7 @@ bool postReading(float chipTemperatureC, int lightRaw, int lightPercent) {
   doc["lightRaw"] = lightRaw;
   doc["lightPercent"] = lightPercent;
   doc["deviceId"] = DEVICE_ID;
-  doc["sleepIntervalMinutes"] = SLEEP_INTERVAL_MINUTES;
+  doc["sleepIntervalMinutes"] = SLEEP_INTERVAL_SECONDS / 60.0;
   doc["deviceSentAt"] = getIsoTimestamp();
   doc["dhtEnabled"] = false;
   doc["temperatureC"] = nullptr;
@@ -96,26 +100,7 @@ bool postReading(float chipTemperatureC, int lightRaw, int lightPercent) {
   return responseCode > 0 && responseCode < 300;
 }
 
-void goToDeepSleep() {
-  Serial.println("Entering deep sleep.");
-  esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL_MINUTES * 60ULL * 1000000ULL);
-
-  // Some power banks shut off when the ESP32 current draw gets too low during sleep.
-  // If that happens, use a USB keep-alive module or a small pulsed dummy load circuit.
-  esp_deep_sleep_start();
-}
-
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
-
-  analogReadResolution(12);
-
-  // Uncomment this line when you add the DHT11 later.
-  // dht.begin();
-
-  Serial.println("Booting ESP32 room monitor.");
-
+void uploadReadingCycle() {
   float chipTemperatureC = readChipTemperatureC();
   int lightRaw = readLightRaw();
   int lightPercent = convertLightToPercent(lightRaw);
@@ -134,8 +119,48 @@ void setup() {
 
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  goToDeepSleep();
+}
+
+void goToDeepSleep() {
+  Serial.println("Entering deep sleep.");
+  esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL_SECONDS * 1000000ULL);
+
+  // Some power banks shut off when the ESP32 current draw gets too low during sleep.
+  // If that happens, use a USB keep-alive module or a small pulsed dummy load circuit.
+  esp_deep_sleep_start();
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  analogReadResolution(12);
+
+  // Uncomment this line when you add the DHT11 later.
+  // dht.begin();
+
+  Serial.println("Booting ESP32 room monitor.");
+  Serial.println(DEBUG_CONTINUOUS_MODE
+                     ? "Debug continuous mode enabled. Device will stay awake and post on an interval."
+                     : "Deep sleep mode enabled. setup() runs again after every wake-up.");
+
+  uploadReadingCycle();
+  lastUploadAtMs = millis();
+
+  if (!DEBUG_CONTINUOUS_MODE) {
+    goToDeepSleep();
+  }
 }
 
 void loop() {
+  if (!DEBUG_CONTINUOUS_MODE) {
+    return;
+  }
+
+  if (millis() - lastUploadAtMs >= UPLOAD_INTERVAL_MS) {
+    uploadReadingCycle();
+    lastUploadAtMs = millis();
+  }
+
+  delay(250);
 }

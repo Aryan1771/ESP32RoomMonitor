@@ -14,6 +14,7 @@ data class RoomStatusUiState(
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val status: RoomStatusDto? = null,
+    val lightHistory: List<Int> = emptyList(),
     val errorMessage: String? = null
 )
 
@@ -37,10 +38,16 @@ class RoomStatusViewModel : ViewModel() {
 
             runCatching { repository.fetchStatus() }
                 .onSuccess { status ->
+                    val nextHistory = buildList {
+                        addAll(_uiState.value.lightHistory.takeLast(11))
+                        status.lightPercent?.let { add(it) }
+                    }
+
                     _uiState.value = RoomStatusUiState(
                         isLoading = false,
                         isRefreshing = false,
-                        status = status
+                        status = status,
+                        lightHistory = nextHistory
                     )
                 }
                 .onFailure { throwable ->
@@ -48,6 +55,7 @@ class RoomStatusViewModel : ViewModel() {
                         isLoading = false,
                         isRefreshing = false,
                         status = _uiState.value.status,
+                        lightHistory = _uiState.value.lightHistory,
                         errorMessage = throwable.message ?: "Unknown error"
                     )
                 }

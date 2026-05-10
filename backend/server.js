@@ -64,7 +64,7 @@ function normalizePayload(body) {
     !Number.isInteger(lightPercent) ||
     typeof deviceId !== "string" ||
     deviceId.trim().length === 0 ||
-    !Number.isInteger(sleepIntervalMinutes) ||
+    !isValidNumber(sleepIntervalMinutes) ||
     typeof deviceSentAt !== "string" ||
     typeof dhtEnabled !== "boolean"
   ) {
