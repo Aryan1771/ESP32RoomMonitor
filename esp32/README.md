@@ -1,12 +1,12 @@
 # ESP32 Firmware
 
-This sketch is designed for a DOIT ESP32 board and works immediately with:
+This sketch is designed for a DOIT ESP32 board and provides firmware for:
 
 - an LDR
 - the ESP32 internal chip temperature
 - a local provisioning hotspot for first-time Wi-Fi setup
 
-DHT11 support is scaffolded but commented out until you buy the sensor.
+DHT11 support is scaffolded but commented out until the optional sensor is installed and configured.
 
 ## Files
 
@@ -35,7 +35,7 @@ The active MVP does not require the DHT library yet because that code is comment
 
 ### Future DHT11 Upgrade
 
-When you buy a DHT11 later, use:
+For an optional DHT11, use:
 
 | Component | ESP32 Pin | Notes |
 | --- | --- | --- |

@@ -35,7 +35,7 @@ PORT=10000
 
 ## Uptime Robot
 
-Use your deployed `/ping` URL in Uptime Robot so the Render service stays warm.
+Use the deployed `/ping` URL for availability monitoring. Periodic requests do not guarantee uptime or override hosting-plan limits.
 
 ## Persistence Upgrade
 

@@ -1,8 +1,8 @@
 # ESP32 Room Monitor
 
-An IoT room monitoring system built for a public GitHub repository with clean secret handling.
+An ESP32 telemetry prototype with an Express backend and a Jetpack Compose Android client.
 
-This MVP works today with:
+The implemented sensor path uses:
 
 - ESP32 internal chip temperature
 - LDR-based light sensing
@@ -10,7 +10,7 @@ This MVP works today with:
 - Jetpack Compose Android app
 - In-app Wi-Fi provisioning for the ESP32 through its setup hotspot
 
-Ambient temperature and humidity support through a DHT11 is already scaffolded in the ESP32 code, but intentionally commented out until you have the sensor.
+Ambient temperature and humidity support through a DHT11 is already scaffolded in the ESP32 code, but disabled in the current firmware. Chip temperature is not ambient room temperature.
 
 ## Architecture
 
@@ -123,14 +123,16 @@ roomMonitor.apiKey=your-shared-secret
 - `esp32/room_monitor/arduino_secrets.h` is ignored by Git.
 - `android/local.properties` is ignored by Git and feeds values into `BuildConfig`.
 
-For a hackathon demo this is fine, but remember that Android client secrets can still be extracted from a built APK.
+Values embedded in Android `BuildConfig` can be extracted from the APK. The shared key is a prototype access mechanism, not a per-user authentication system.
 
-## Future DHT11 Upgrade
+## Documentation
 
-When you buy the DHT11 later:
+- [Firmware and wiring](esp32/README.md)
+- [Backend configuration](backend/README.md)
+- [Android setup](android/README.md)
 
-1. Wire the DHT11 to the documented GPIO pin in `esp32/README.md`.
-2. Install the DHT library in Arduino IDE.
-3. Uncomment the marked DHT11 code blocks in `esp32/room_monitor/room_monitor.ino`.
-4. Change `dhtEnabled` to `true`.
-5. Optionally show ambient temperature and humidity in the Android UI.
+The backend retains only the latest reading in memory; restarting it clears that state.
+
+## License
+
+See [LICENSE](LICENSE) for the GNU GPL v3 terms.
